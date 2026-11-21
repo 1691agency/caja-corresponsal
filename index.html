@@ -215,12 +215,37 @@ nav.tabs .mas{flex:0 0 62px;height:62px;border-radius:50%;background:var(--rosa)
 .pend small{display:block;color:var(--mut);font-size:12px}
 .pend button{background:var(--rosa-bg);color:var(--rosa);border:none;border-radius:50%;width:30px;height:30px;cursor:pointer}
 .pista.grande{font-size:16px}
+/* ===== v7 ===== */
+.guardado-chip{display:inline-block;margin-top:6px;font-size:12px;font-weight:700;color:var(--in);background:var(--in-bg);border-radius:999px;padding:3px 10px}
+.guardado-chip:empty{display:none}
+.guardado-chip.mal{color:var(--out);background:var(--out-bg)}
+header .guardado-chip{margin-top:4px}
+.aviso{background:#fff;border-left:4px solid var(--rosa);border-radius:14px;padding:12px 14px;margin-bottom:12px;font-size:14px;line-height:1.4;cursor:pointer;box-shadow:0 2px 10px rgba(233,121,156,.08)}
+.aviso b{display:block;margin-bottom:2px}
+.aviso.rojo{border-left-color:var(--out);background:var(--out-bg)}
+.grande-op{display:flex;align-items:center;gap:14px;width:100%;border:none;border-radius:20px;padding:16px;margin:8px 0;text-align:left;cursor:pointer;color:var(--ink)}
+.grande-op.entra{background:var(--in-bg)}.grande-op.sale{background:var(--out-bg)}
+.grande-op .gi{width:46px;height:46px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:22px;flex-shrink:0}
+.grande-op b{display:block;font-size:17px}.grande-op small{display:block;font-size:13px;color:var(--mut);margin-top:2px}
+.atras{background:none;border:none;color:var(--rosa);font-size:16px;font-weight:700;padding:0 0 8px;cursor:pointer}
+.lab{display:block;font-size:14px;font-weight:700;color:var(--mut);margin:6px 2px 6px}
+.extra{margin-top:12px;color:var(--mut);font-size:14px}.extra summary{cursor:pointer;padding:6px 2px}.extra .inp{margin-top:8px}
+.conf-monto{background:#fff;border-radius:20px;text-align:center;padding:20px 12px;margin:10px 0 6px;font-size:36px;font-weight:800;color:var(--ink)}
+.conf-monto small{display:block;font-size:15px;color:var(--rosa);margin-top:6px;letter-spacing:.3px}
+.bienv{font-size:46px;text-align:center;margin:4px 0 2px}
+.paso{display:flex;gap:12px;align-items:flex-start;background:#fff;border-radius:16px;padding:12px;margin-bottom:8px}
+.paso>span{width:28px;height:28px;border-radius:50%;background:var(--rosa);color:#fff;display:grid;place-items:center;font-weight:800;flex-shrink:0}
+.paso b{display:block;font-size:15px}.paso small{display:block;font-size:13px;color:var(--mut);margin-top:2px}
+.link{color:var(--rosa)}
+.paso small b{display:inline;font-size:inherit}
+.toast{top:calc(14px + env(safe-area-inset-top));bottom:auto!important;transform:translateX(-50%) translateY(-8px)}
+.toast.on{transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
 <header>
   <div class="fecha" id="fecha"></div>
-  <h1 id="titulo">Caja</h1>
+  <h1 id="titulo">Caja</h1><div class="guardado-chip"></div>
 </header>
 
 <main>
@@ -272,10 +297,37 @@ const EMO={deposito:'🏦',nequi_in:'📱',factura:'🧾',tc:'💳',credito:'�
 const TIPO=Object.assign({},VIEJOS,Object.fromEntries(TIPOS.map(t=>[t.id,t])));
 const KEY='caja_corresponsal_v1';
 
-/* ====== Datos ====== */
+/* ====== Datos (guardado doble: memoria del navegador + base interna) ====== */
 let S=load();
 function load(){try{const r=localStorage.getItem(KEY);if(r){const o=JSON.parse(r);if(o&&o.days)return o}}catch(e){}return{days:{}}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S));return true}catch(e){toast('⚠️ No se pudo guardar');return false}}
+let ULT_GUARDADO=S.savedAt||0,FALLO_GUARDAR=false;
+function idb(){return new Promise((ok,mal)=>{try{const r=indexedDB.open('caja_corresponsal',1);r.onupgradeneeded=()=>r.result.createObjectStore('d');r.onsuccess=()=>ok(r.result);r.onerror=()=>mal(r.error)}catch(e){mal(e)}})}
+function idbPut(v){return idb().then(db=>new Promise((ok,mal)=>{const tx=db.transaction('d','readwrite');tx.objectStore('d').put(v,'estado');tx.oncomplete=ok;tx.onerror=()=>mal(tx.error)})).catch(()=>{})}
+function idbGet(){return idb().then(db=>new Promise(ok=>{const q=db.transaction('d').objectStore('d').get('estado');q.onsuccess=()=>ok(q.result||null);q.onerror=()=>ok(null)})).catch(()=>null)}
+function save(){
+  S.savedAt=Date.now();const txt=JSON.stringify(S);let ok=false;
+  try{localStorage.setItem(KEY,txt);ok=localStorage.getItem(KEY)===txt}catch(e){ok=false}
+  idbPut(txt);
+  FALLO_GUARDAR=!ok;ULT_GUARDADO=S.savedAt;pintarGuardado();
+  if(!ok)toast('⚠️ No se pudo guardar en el celular');
+  return ok;
+}
+function pintarGuardado(){document.querySelectorAll('.guardado-chip').forEach(el=>{
+  if(FALLO_GUARDAR){el.className='guardado-chip mal';el.textContent='⚠️ No se está guardando'}
+  else if(ULT_GUARDADO){el.className='guardado-chip';el.textContent='✓ Todo guardado · '+hora(ULT_GUARDADO)}
+  else el.textContent=''})}
+// Al abrir: si la base interna tiene algo más nuevo, se usa eso
+idbGet().then(t=>{if(!t)return;try{const o=JSON.parse(t);if(o&&o.days&&(o.savedAt||0)>(S.savedAt||0)){S=o;try{localStorage.setItem(KEY,t)}catch(e){}ULT_GUARDADO=S.savedAt;render()}}catch(e){}});
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+// Borradores: lo que se está escribiendo no se pierde si el celular recarga la página
+const BKEY=KEY+'_borrador';
+function guardarBorrador(b){try{if(b)localStorage.setItem(BKEY,JSON.stringify(Object.assign(b,{ts:Date.now()})));else localStorage.removeItem(BKEY)}catch(e){}}
+function leerBorrador(){try{const b=JSON.parse(localStorage.getItem(BKEY)||'null');if(b&&Date.now()-b.ts<3*3600e3)return b}catch(e){}return null}
+// Dónde se está abriendo la app
+const UA=navigator.userAgent||'';
+const ES_IOS=/iPhone|iPad|iPod/.test(UA)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const EN_APP_AJENA=/FBAN|FBAV|Instagram|WhatsApp|Line\/|TikTok|Snapchat/i.test(UA);
+const COMO_APP=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
 const pad=n=>String(n).padStart(2,'0');
 function hoyKey(d=new Date()){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
 function getDay(k){return S.days[k]||null}
@@ -333,6 +385,7 @@ function render(){
   document.getElementById('fecha').textContent=cap(new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'}));
   document.getElementById('titulo').textContent={hoy:'Inicio',contar:'Contar la plata',hist:'Historial',mas:'Más opciones'}[TAB];
   if(TAB==='hoy')vHoy();if(TAB==='contar')vContar();if(TAB==='hist')vHist();if(TAB==='mas')vMas();
+  pintarGuardado();
 }
 
 /* ====== Anillos ====== */
@@ -354,10 +407,11 @@ function vHoy(){
   const el=document.getElementById('v-hoy');const d=getDay(hoyKey());
   const fecha=cap(new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'}));
   const tip=TIPS[new Date().getDate()%TIPS.length];
-  const top=`<div class="top"><div><div class="hola">${saludo()},<br><span>bienvenida</span> 👋</div><div class="sub">${fecha}</div></div><button class="icbtn" data-tab="mas" aria-label="Más">⚙️</button></div>`;
+  const top=`<div class="top"><div><div class="hola">${saludo()},<br><span>${esc(S.nombre||'bienvenida')}</span> 👋</div><div class="sub">${fecha}</div><div class="guardado-chip"></div></div><button class="icbtn" data-tab="mas" aria-label="Más">⚙️</button></div>`;
+  const avisos=avisosApp()+((S.ultimaCopia||0)<Date.now()-7*864e5&&Object.keys(S.days).length>2?`<div class="aviso" data-act="compartir"><b>💾 Hace rato no guardas una copia</b>Toca aquí y mándatela por WhatsApp. Así nunca pierdes nada.</div>`:'');
   if(!d||!d.apertura){
     const u=ultimoCierre();
-    el.innerHTML=`${top}
+    el.innerHTML=`${top}${avisos}
       <div class="resumen"><div class="t">Para empezar el día</div><div class="grande" style="font-size:24px">Cuenta la plata de la caja</div>
         <div class="peq">Así la app sabe cuánto debe haber todo el día.</div><div style="height:14px"></div>
         <button class="pill" data-act="ir-contar">Empezar a contar <span>→</span></button></div>
@@ -373,7 +427,7 @@ function vHoy(){
       else{est=(df<0?'Faltaron ':'Sobraron ')+fmt(Math.abs(df));ok='<span class="ok mal">!</span>'}}
     return`<div class="cont c${i}" ${a?'':'data-act="ir-contar"'}><span class="e">${t.ic}</span><span class="d"><b>${t.n}</b><small>${est}</small></span>${ok||'<span class="fl">›</span>'}</div>`}).join('');
   const lista=[...d.movs].reverse();const vis=VERTODO?lista:lista.slice(0,5);
-  el.innerHTML=`${top}
+  el.innerHTML=`${top}${avisos}
     <div class="resumen"><div class="t">Efectivo que debe haber en la caja</div><div class="grande">${fmt(e.ef)}</div>
       <div class="filas"><div>En la plataforma<b>${fmt(e.sp)}</b></div><div>Total<b>${fmt(e.ef+e.sp)}</b></div></div>
       <button class="pill" data-act="scan">📷 Escanear comprobante <span>→</span></button></div>
@@ -383,19 +437,13 @@ function vHoy(){
     <div class="card" style="padding:4px 14px">${vis.map(filaMovHoy).join('')||'<div class="empty">Aún no hay movimientos.<br>Toca el botón <b>+</b> para anotar.</div>'}</div>
     <div class="sec">Consejo del día</div><div class="tip"><span class="e">💡</span><span>${tip}</span></div>`;
 }
-function modalAgregar(){
-  const fila=t=>`<button class="fila" data-act="nuevo" data-t="${t.id}"><span class="ic t-${t.g}">${EMO[t.id]}</span><span><b>${t.n}</b><small>${t.s}</small></span><span class="fl">›</span></button>`;
-  openModal(`<h3>¿Qué vas a anotar?</h3>
-    <div class="quick"><button data-act="scan"><span>📷</span>Escanear comprobante</button><button data-act="verificar"><span>🧮</span>Verificar un monto</button></div>
-    <div class="grp">⬇️ Me entregaron plata</div>${TIPOS.filter(t=>t.g==='entra').map(fila).join('')}
-    <div class="grp">⬆️ Yo entregué plata</div>${TIPOS.filter(t=>t.g==='sale').map(fila).join('')}
-    <div class="grp">Otros movimientos</div>${TIPOS.filter(t=>t.g==='caja').map(fila).join('')}
-    <button class="ghost" data-act="cerrar">Cancelar</button>`);
-}
 function vMas(){
   const d=getDay(hoyKey());
   document.getElementById('v-mas').innerHTML=`
-    <button class="mas-item" data-act="backup"><span>💾</span>Guardar copia de seguridad</button>
+    <button class="mas-item" data-act="compartir"><span>📤</span>Enviar copia por WhatsApp</button>
+    <button class="mas-item" data-act="backup"><span>💾</span>Descargar copia de seguridad</button>
+    <button class="mas-item" data-act="como-instalar"><span>📌</span>Poner la app en la pantalla de inicio</button>
+    <button class="mas-item" data-act="cambiar-nombre"><span>✏️</span>Cambiar mi nombre</button>
     <button class="mas-item" data-act="restore"><span>♻️</span>Recuperar una copia</button>
     <button class="mas-item" data-act="csv"><span>📊</span>Descargar todo para Excel</button>
     ${d&&d.apertura?`<button class="mas-item" data-act="rehacer-apertura"><span>🔄</span>Volver a contar la apertura de hoy</button>`:''}
@@ -405,17 +453,6 @@ function vMas(){
 /* ====== Modales ====== */
 function openModal(html){document.getElementById('sheet').innerHTML=html;document.getElementById('modal').hidden=false}
 function closeModal(){document.getElementById('modal').hidden=true}
-function modalNuevo(tid){
-  const t=TIPO[tid];
-  const efecto=[t.ef>0?'entra efectivo':t.ef<0?'sale efectivo':'',t.sp>0?'sube la plataforma':t.sp<0?'baja la plataforma':''].filter(Boolean).join(' · ');
-  openModal(`<h3>${t.n}</h3><div class="sub">${efecto}</div>
-    <input class="inp big" id="m-monto" data-tipo="${tid}" inputmode="numeric" autocomplete="off" placeholder="$ 0">${cajaMonto('m-monto')}
-    <div class="chips">${[10000,20000,50000,100000,200000].map(v=>`<button class="chip" data-act="chip" data-v="${v}">+ ${miles(v)}</button>`).join('')}<button class="chip" data-act="chip" data-v="0">Borrar</button></div>
-    <input class="inp" id="m-nota" placeholder="Nota (opcional): nombre, factura…" autocomplete="off">
-    <button class="primary ${t.ef>=0?'green':''}" data-act="guardar-mov" data-t="${tid}">Guardar</button>
-    <button class="ghost" data-act="cerrar">Cancelar</button>`);
-  setTimeout(()=>document.getElementById('m-monto').focus(),80);
-}
 function modalMov(id){
   const d=day();const m=d.movs.find(x=>x.id===id);if(!m)return;const [c,sg]=signo(m);
   openModal(`<h3>${TIPO[m.tipo].n}</h3><div class="sub">Hoy a las ${hora(m.ts)}</div>
@@ -425,7 +462,10 @@ function modalMov(id){
 }
 
 /* ====== Vista CONTAR ====== */
-let C={q:{},sp:'',res:null};
+const CKEY=KEY+'_conteo';
+let C=(()=>{try{const c=JSON.parse(localStorage.getItem(CKEY)||'null');if(c&&c.dia===hoyKey())return{q:c.q||{},sp:c.sp||'',res:null}}catch(e){}return{q:{},sp:'',res:null}})();
+function guardarConteo(){try{localStorage.setItem(CKEY,JSON.stringify({dia:hoyKey(),q:C.q,sp:C.sp}))}catch(e){}}
+function borrarConteo(){C={q:{},sp:'',res:null};try{localStorage.removeItem(CKEY)}catch(e){}}
 function totalContado(){return DENOMS.reduce((s,v)=>s+v*(C.q[v]||0),0)}
 function filaMov(m){const [c,sg]=signo(m);return`<div class="mov" style="cursor:default"><div class="h">${hora(m.ts)}</div><div class="d"><b>${TIPO[m.tipo].n}</b>${m.nota?`<span>${esc(m.nota)}</span>`:''}</div><div class="m ${c}">${sg} ${fmt(m.monto)}</div></div>`}
 function vContar(){
@@ -572,7 +612,81 @@ function modalVerificar(){
   openModal(`<h3>🧮 Verificar antes de hacerla</h3><div class="sub">Escribe lo que pidió el cliente. La app te lo dice en voz alta. Después de hacerla en la plataforma, escanea el comprobante y la app compara.</div>
     <input class="inp big" id="v-monto" inputmode="numeric" autocomplete="off" placeholder="$ 0">${cajaMonto('v-monto')}
     <button class="primary" data-act="pend-ok">Listo, voy a hacerla</button><button class="ghost" data-act="cerrar">Cancelar</button>`);
-  setTimeout(()=>document.getElementById('v-monto').focus(),80);
+  setTimeout(()=>{const x=document.getElementById('v-monto');x&&x.focus()},80);
+}
+
+/* ====== v7: pasos más simples ====== */
+function modalAgregar(){
+  openModal(`<h3>¿Qué pasó?</h3><div class="sub">Escoge una opción</div>
+    <button class="grande-op entra" data-act="grupo" data-g="entra"><span class="gi">⬇️</span><span><b>Me entregaron plata</b><small>Consignación, Nequi, factura, tarjeta…</small></span></button>
+    <button class="grande-op sale" data-act="grupo" data-g="sale"><span class="gi">⬆️</span><span><b>Yo entregué plata</b><small>Retiro con tarjeta, con código, Nequi…</small></span></button>
+    <div class="quick"><button data-act="scan"><span>📷</span>Escanear comprobante</button><button data-act="verificar"><span>🧮</span>Verificar un monto</button></div>
+    <button class="link" data-act="grupo" data-g="caja">Otros movimientos (meter o sacar plata, comisión…)</button>
+    <button class="ghost" data-act="cerrar">Cancelar</button>`);
+}
+function modalGrupo(g){
+  const tit={entra:'⬇️ Me entregaron plata',sale:'⬆️ Yo entregué plata',caja:'Otros movimientos'}[g];
+  const fila=t=>`<button class="fila" data-act="nuevo" data-t="${t.id}"><span class="ic t-${t.g}">${EMO[t.id]}</span><span><b>${t.n}</b><small>${t.s}</small></span><span class="fl">›</span></button>`;
+  openModal(`<button class="atras" data-act="agregar">‹ Atrás</button><h3>${tit}</h3><div class="sub">¿Qué transacción fue?</div>
+    ${TIPOS.filter(t=>t.g===g).map(fila).join('')}<button class="ghost" data-act="cerrar">Cancelar</button>`);
+}
+function modalNuevo(tid,pre){
+  const t=TIPO[tid];pre=pre||{};
+  const efecto=t.ef>0?'Entra plata a la caja':t.ef<0?'Sale plata de la caja':'No mueve el efectivo';
+  openModal(`<h3>${EMO[tid]||''} ${t.n}</h3><div class="sub">${efecto}</div>
+    <label class="lab">¿De cuánto fue?</label>
+    <input class="inp big" id="m-monto" data-tipo="${tid}" inputmode="numeric" autocomplete="off" placeholder="$ 0" value="${pre.monto?'$ '+miles(pre.monto):''}">${cajaMonto('m-monto')}
+    <button class="primary" data-act="guardar-mov" data-t="${tid}">Guardar</button>
+    <button class="ghost" data-act="cerrar">Cancelar</button>
+    <details class="extra" ${pre.nota?'open':''}><summary>Agregar una nota (opcional)</summary><input class="inp" id="m-nota" placeholder="Nombre del cliente, factura…" autocomplete="off" value="${esc(pre.nota||'')}"></details>`);
+  guardarBorrador({tipo:'mov',tid,monto:pre.monto||0,nota:pre.nota||''});
+  const i=document.getElementById('m-monto');if(i.value)revisarMonto(i);
+  setTimeout(()=>{if(document.body.contains(i))i.focus()},80);
+}
+function confirmarAlto(n,tid,nota){
+  openModal(`<h3>⚠️ Revisa el monto</h3><div class="sub">Es un monto alto. Léelo con calma:</div>
+    <div class="conf-monto">${fmt(n)}<small>${enLetras(n).toUpperCase()}</small></div>
+    <button class="primary" data-act="conf-si" data-t="${tid}" data-n="${n}">Sí, son ${fmt(n)}</button>
+    <button class="ghost" data-act="conf-no" data-t="${tid}" data-n="${n/10}">No, eran ${fmt(n/10)}</button>
+    <button class="link" data-act="conf-volver" data-t="${tid}" data-n="${n}">Corregir el monto</button>`);
+  CONF_NOTA=nota;decir(n);
+}
+let CONF_NOTA='';
+function guardarMov(tid,n,nota,extra){
+  day().movs.push(Object.assign({id:uid(),tipo:tid,monto:n,nota:nota||'',ts:Date.now()},extra||{}));
+  const ok=save();guardarBorrador(null);closeModal();
+  toast(ok?'✓ Guardado: '+fmt(n):'⚠️ No se pudo guardar');render();
+}
+function primeraVez(){
+  openModal(`<div class="bienv">👋</div><h3 style="text-align:center">¡Bienvenida a tu caja!</h3>
+    <div class="sub" style="text-align:center">Así funciona, en 3 pasos:</div>
+    <div class="paso"><span>1</span><div><b>Al empezar el día</b><small>Cuenta la plata y escribe el saldo de la plataforma.</small></div></div>
+    <div class="paso"><span>2</span><div><b>Cada vez que atiendas a alguien</b><small>Toca el botón rosado <b>+</b> y anota lo que pasó.</small></div></div>
+    <div class="paso"><span>3</span><div><b>Tres veces al día</b><small>Cuenta la plata. La app te dice si cuadra o dónde está el error.</small></div></div>
+    <label class="lab">¿Cómo te llamas?</label><input class="inp" id="nombre" placeholder="Tu nombre" autocomplete="off">
+    <button class="primary" data-act="bienv-ok">Empezar</button>`);
+}
+function avisosApp(){
+  if(EN_APP_AJENA)return`<div class="aviso rojo"><b>⚠️ Estás abriendo la app dentro de otra aplicación</b>Aquí no se guarda bien. Toca los 3 puntitos (⋯) y escoge <b>Abrir en ${ES_IOS?'Safari':'Chrome'}</b>.</div>`;
+  if(!COMO_APP)return`<div class="aviso" data-act="como-instalar"><b>📌 Pon la app en tu pantalla de inicio</b>Así abres siempre la misma y no se pierde nada. Toca aquí para ver cómo.</div>`;
+  return'';
+}
+function modalInstalar(){
+  openModal(`<h3>📌 Poner la app en la pantalla de inicio</h3>
+    ${ES_IOS?`<div class="paso"><span>1</span><div><b>Abre este enlace en Safari</b><small>La brújula azul.</small></div></div>
+      <div class="paso"><span>2</span><div><b>Toca el botón Compartir</b><small>El cuadrito con la flecha hacia arriba (abajo en el centro).</small></div></div>
+      <div class="paso"><span>3</span><div><b>Toca "Agregar a inicio"</b><small>Baja un poco en la lista si no lo ves.</small></div></div>`
+    :`<div class="paso"><span>1</span><div><b>Abre este enlace en Chrome</b></div></div>
+      <div class="paso"><span>2</span><div><b>Toca los 3 puntitos ⋮</b><small>Arriba a la derecha.</small></div></div>
+      <div class="paso"><span>3</span><div><b>Toca "Agregar a pantalla principal"</b></div></div>`}
+    <div class="aviso" style="margin-top:12px"><b>Importante</b>Desde ahí en adelante, abre la caja <b>solo desde el ícono</b>, no desde WhatsApp.</div>
+    <button class="primary" data-act="cerrar">Entendido</button>`);
+}
+async function compartirCopia(){
+  const txt=JSON.stringify(S),nom='copia-caja-'+hoyKey()+'.json';
+  try{const f=new File([txt],nom,{type:'application/json'});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Copia de la caja'});S.ultimaCopia=Date.now();save();return}}catch(e){if(e&&e.name==='AbortError')return}
+  descargar(nom,txt,'application/json');S.ultimaCopia=Date.now();save();toast('Copia descargada');
 }
 
 /* ====== Vista HISTORIAL ====== */
@@ -619,16 +733,24 @@ function csv(){
 /* ====== Eventos ====== */
 document.addEventListener('click',e=>{
   const tab=e.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return}
-  if(e.target.id==='modal'){closeModal();return}
+  if(e.target.id==='modal'){return}
   const b=e.target.closest('[data-act]');if(!b)return;const act=b.dataset.act;
   if(act==='ir-contar')setTab('contar');
   else if(act==='usar-ayer'){const u=ultimoCierre();if(!u)return;day().apertura={ef:u.ef,sp:u.sp,conteo:null,ts:Date.now()};save();toast('Caja abierta ✅');render()}
   else if(act==='rehacer-apertura'){if(b.dataset.ok){day().apertura=null;save();setTab('contar')}else{b.dataset.ok=1;b.textContent='Toca otra vez para confirmar (los movimientos no se borran)'}}
   else if(act==='nuevo'){closeModal();modalNuevo(b.dataset.t)}
-  else if(act==='cerrar')closeModal();
+  else if(act==='cerrar'){closeModal();guardarBorrador(null)}
   else if(act==='chip'){const i=document.getElementById('m-monto');const v=+b.dataset.v;const n=v?num(i.value)+v:0;i.value=n?'$ '+miles(n):'';revisarMonto(i)}
-  else if(act==='guardar-mov'){if(altoPendiente('m-monto'))return;const n=num(document.getElementById('m-monto').value);if(!n){toast('Escribe el monto');return}
-    day().movs.push({id:uid(),tipo:b.dataset.t,monto:n,nota:document.getElementById('m-nota').value.trim(),ts:Date.now()});save();closeModal();toast('Anotado: '+fmt(n));render()}
+  else if(act==='guardar-mov'){const n=num(document.getElementById('m-monto').value),tid=b.dataset.t,nt=(document.getElementById('m-nota')||{}).value||'';if(!n){toast('Escribe el monto');document.getElementById('m-monto').focus();return}
+    if(esAlto(n,tid)){confirmarAlto(n,tid,nt.trim());return}guardarMov(tid,n,nt.trim())}
+  else if(act==='conf-si')guardarMov(b.dataset.t,+b.dataset.n,CONF_NOTA);
+  else if(act==='conf-no'){modalNuevo(b.dataset.t,{monto:+b.dataset.n,nota:CONF_NOTA});decir(+b.dataset.n)}
+  else if(act==='conf-volver')modalNuevo(b.dataset.t,{monto:+b.dataset.n,nota:CONF_NOTA});
+  else if(act==='grupo')modalGrupo(b.dataset.g);
+  else if(act==='bienv-ok'){S.nombre=(document.getElementById('nombre').value||'').trim().slice(0,20);S.bienvenida=1;save();closeModal();render()}
+  else if(act==='cambiar-nombre'){primeraVez();const i=document.getElementById('nombre');i.value=S.nombre||'';}
+  else if(act==='como-instalar')modalInstalar();
+  else if(act==='compartir')compartirCopia();
   else if(act==='ver-mov')modalMov(b.dataset.id);
   else if(act==='agregar'){const d=getDay(hoyKey());if(!d||!d.apertura){setTab('contar');toast('Primero cuenta la plata')}else modalAgregar()}
   else if(act==='ver-todo'){VERTODO=!VERTODO;render()}
@@ -641,13 +763,13 @@ document.addEventListener('click',e=>{
   else if(act==='scan'){closeModal();const c=document.getElementById('camIn');c.value='';c.click()}
   else if(act==='guardar-scan'){const tp=document.getElementById('s-tipo').value,n=num(document.getElementById('m-monto').value),ref=document.getElementById('s-ref').value.replace(/\D/g,'');
     if(!tp){toast('Escoge qué fue');return}if(!n){toast('Escribe el monto');return}if(altoPendiente('m-monto'))return;S.pend=null;
-    day().movs.push({id:uid(),tipo:tp,monto:n,nota:ref?'Aprob. '+ref:'',ref,ts:Date.now(),foto:1});save();closeModal();toast('Anotado: '+fmt(n));render()}
+    guardarMov(tp,n,ref?'Aprob. '+ref:'',{ref,foto:1})}
   else if(act==='borrar-mov'){if(b.dataset.ok){const d=day();d.movs=d.movs.filter(m=>m.id!==b.dataset.id);save();closeModal();toast('Movimiento borrado');render()}else{b.dataset.ok=1;b.textContent='Toca otra vez para borrar'}}
-  else if(act==='q'){const v=+b.dataset.v;C.q[v]=Math.max(0,(C.q[v]||0)+(+b.dataset.d));C.res=null;const inp=document.querySelector(`[data-q="${v}"]`);inp.value=C.q[v]||'';document.getElementById('sub-'+v).textContent=C.q[v]?fmt(v*C.q[v]):'';document.getElementById('c-total').textContent=fmt(totalContado());const r=document.getElementById('resultado');if(r)r.remove()}
-  else if(act==='limpiar-conteo'){C={q:{},sp:'',res:null};render()}
-  else if(act==='abrir'){const ef=totalContado();const d=day();d.apertura={ef,sp:num(C.sp),conteo:{...C.q},ts:Date.now()};save();C={q:{},sp:'',res:null};toast('Caja abierta ✅');setTab('hoy')}
+  else if(act==='q'){const v=+b.dataset.v;C.q[v]=Math.max(0,(C.q[v]||0)+(+b.dataset.d));C.res=null;guardarConteo();const inp=document.querySelector(`[data-q="${v}"]`);inp.value=C.q[v]||'';document.getElementById('sub-'+v).textContent=C.q[v]?fmt(v*C.q[v]):'';document.getElementById('c-total').textContent=fmt(totalContado());const r=document.getElementById('resultado');if(r)r.remove()}
+  else if(act==='limpiar-conteo'){borrarConteo();render()}
+  else if(act==='abrir'){const ef=totalContado();const d=day();d.apertura={ef,sp:num(C.sp),conteo:{...C.q},ts:Date.now()};save();borrarConteo();toast('Caja abierta ✅');setTab('hoy')}
   else if(act==='comparar'){const d=day();const e2=esperado(d);C.res={ef:totalContado(),sp:num(C.sp),espEf:e2.ef,espSp:e2.sp};render()}
-  else if(act==='guardar-arqueo'||act==='cerrar-dia'){const d=day();const r=C.res;if(!r)return;d.arqueos.push({ts:Date.now(),ef:r.ef,sp:r.sp,espEf:r.espEf,espSp:r.espSp,conteo:{...C.q},cierre:act==='cerrar-dia'});save();C={q:{},sp:'',res:null};toast(act==='cerrar-dia'?'Día cerrado ✅':'Conteo guardado ✅');setTab('hoy')}
+  else if(act==='guardar-arqueo'||act==='cerrar-dia'){const d=day();const r=C.res;if(!r)return;d.arqueos.push({ts:Date.now(),ef:r.ef,sp:r.sp,espEf:r.espEf,espSp:r.espSp,conteo:{...C.q},cierre:act==='cerrar-dia'});save();borrarConteo();toast(act==='cerrar-dia'?'Día cerrado ✅':'Conteo guardado ✅');setTab('hoy')}
   else if(act==='ver-dia')modalDia(b.dataset.k);
   else if(act==='csv')csv();
   else if(act==='backup'){descargar('copia-caja-'+hoyKey()+'.json',JSON.stringify(S),'application/json');toast('Copia descargada')}
@@ -655,8 +777,10 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
-  if(t.dataset.q){const v=+t.dataset.q;C.q[v]=Math.max(0,parseInt(t.value,10)||0);C.res=null;document.getElementById('sub-'+v).textContent=C.q[v]?fmt(v*C.q[v]):'';document.getElementById('c-total').textContent=fmt(totalContado());const r=document.getElementById('resultado');if(r)r.remove()}
-  else if(t.id==='c-sp'||t.id==='m-monto'||t.id==='v-monto'){const n=num(t.value);t.value=n?'$ '+miles(n):'';if(t.id==='c-sp'){C.sp=String(n);C.res=null}else revisarMonto(t)}
+  if(t.dataset.q){const v=+t.dataset.q;C.q[v]=Math.max(0,parseInt(t.value,10)||0);C.res=null;guardarConteo();document.getElementById('sub-'+v).textContent=C.q[v]?fmt(v*C.q[v]):'';document.getElementById('c-total').textContent=fmt(totalContado());const r=document.getElementById('resultado');if(r)r.remove()}
+  else if(t.id==='c-sp'||t.id==='m-monto'||t.id==='v-monto'){const n=num(t.value);t.value=n?'$ '+miles(n):'';if(t.id==='c-sp'){C.sp=String(n);C.res=null;guardarConteo()}else revisarMonto(t)
+    if(t.id==='m-monto'&&t.dataset.tipo&&!document.getElementById('s-tipo'))guardarBorrador({tipo:'mov',tid:t.dataset.tipo,monto:n,nota:(document.getElementById('m-nota')||{}).value||''})}
+  else if(t.id==='m-nota'){const i=document.getElementById('m-monto');if(i&&i.dataset.tipo&&!document.getElementById('s-tipo'))guardarBorrador({tipo:'mov',tid:i.dataset.tipo,monto:num(i.value),nota:t.value})}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('modal').hidden===false){const g=document.querySelector('[data-act="guardar-mov"]');if(g)g.click()}});
 document.getElementById('camIn').addEventListener('change',e=>{const f=e.target.files[0];if(f)escanear(f)});
@@ -666,6 +790,9 @@ document.getElementById('fileIn').addEventListener('change',e=>{
   r.readAsText(f);
 });
 document.body.classList.add('en-hoy');render();
+setTimeout(()=>{const b=leerBorrador();
+  if(b&&b.tipo==='mov'&&TIPO[b.tid]&&getDay(hoyKey())&&getDay(hoyKey()).apertura){modalNuevo(b.tid,{monto:b.monto,nota:b.nota});toast('Seguimos donde ibas')}
+  else if(!S.bienvenida&&!Object.keys(S.days).length)primeraVez();},300);
 </script>
 </body>
 </html>
