@@ -604,7 +604,7 @@ function revisarMonto(inp){
   const id=inp.id,n=num(inp.value),tipo=inp.dataset.tipo||'';
   const L=document.getElementById(id+'-letras'),A=document.getElementById(id+'-alerta');if(!L)return;
   L.innerHTML=n?`<b>${enLetras(n).toUpperCase()}</b><button class="voz" data-act="voz" data-for="${id}">🔊</button><span class="cifras">${String(n).length} cifras</span>`:'';
-  if(A){if(n&&esAlto(n,tipo)&&n%10===0){A.innerHTML=`<div class="alto" data-ok="0"><b>⚠️ Monto alto. ¿Seguro que son ${fmt(n)}?</b>
+  if(A){if(n&&esAlto(n,tipo)&&n%10===0&&!(id==='m-monto'&&!document.getElementById('s-tipo'))){A.innerHTML=`<div class="alto" data-ok="0"><b>⚠️ Monto alto. ¿Seguro que son ${fmt(n)}?</b>
       <div class="alto-bt"><button data-act="alto-si" data-for="${id}">Sí, son ${fmt(n)}</button><button data-act="alto-no" data-for="${id}" data-v="${n/10}">No, eran ${fmt(n/10)}</button></div></div>`}else A.innerHTML=''}
 }
 function altoPendiente(id){const a=document.querySelector('#'+id+'-alerta .alto');if(a&&a.dataset.ok!=='1'){a.classList.add('sacude');setTimeout(()=>a.classList.remove('sacude'),500);toast('Confirma el monto primero');return true}return false}
